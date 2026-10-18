@@ -2,7 +2,6 @@ from ryu.base import app_manager
 from operator import attrgetter
 from ryu.controller import ofp_event
 from ryu.controller.handler import (
-    HANDSHAKE_DISPATCHER,
     CONFIG_DISPATCHER,
     DEAD_DISPATCHER,
     MAIN_DISPATCHER,

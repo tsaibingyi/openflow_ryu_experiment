@@ -2,7 +2,7 @@
 
 from mininet.net import Mininet
 from mininet.node import RemoteController
-from mininet.node import Host, Node
+from mininet.node import Host
 from mininet.node import OVSKernelSwitch
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info
@@ -63,7 +63,7 @@ def do_start_server(self, line):
     global net
     h2 = net.get('h2')
     
-    cmd = "xterm -hold -e 'bash /media/sf_VboxShare/udp_ctrl/server.sh' &"
+    cmd = "xterm -hold -e 'bash /media/sf_VboxShare/udp_ctrl/Mininet_CLI_Func/server.sh' &"
     h2.cmd(cmd)
     print("The Server has been started on h2.")
 CLI.do_start_server = do_start_server
@@ -72,7 +72,7 @@ def do_start_test(self, line):
     global net
     h2 = net.get('h2')
     
-    cmd = "xterm -hold -e 'bash /media/sf_VboxShare/udp_ctrl/client.sh' &"
+    cmd = "xterm -hold -e 'bash /media/sf_VboxShare/udp_ctrl/Mininet_CLI_Func/client.sh' &"
     h1 = net.get('h1')
     h1.cmd(cmd)
     print("The Client Test has been started on h1.")

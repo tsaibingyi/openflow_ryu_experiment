@@ -2,3 +2,4 @@ iperf_client_logs
 iperf_server_logs
 ctrl.pyc
 .vscode
+not_for_git
