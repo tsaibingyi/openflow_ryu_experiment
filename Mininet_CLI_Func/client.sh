@@ -12,7 +12,7 @@ END_PORT=$((START_PORT + NUM - 1))
 mkdir -p iperf_client_logs
 
 for i in $(seq ${START_PORT} ${END_PORT}); do
-    iperf3 --client ${SERVER_IP} --port ${i} --bitrate ${TARGET_BIT_RATE} --format m --time ${TIME} > "iperf_client_logs/client_${i}.log" 2>&1 &
+    iperf3 --client ${SERVER_IP} --port ${i} --bandwidth ${TARGET_BIT_RATE} --format m --time ${TIME} > "iperf_client_logs/client_${i}.log" 2>&1 &
     sleep ${SLEEP}
 done
 
