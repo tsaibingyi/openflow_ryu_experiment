@@ -10,8 +10,23 @@ from ryu.controller.handler import (
 from ryu.lib import hub
 from ryu.ofproto import ofproto_v1_3
 
+# Port bitrate limits for each switch and port (switch_id : [bitrate_limit(Mbps) for each port])
+port_bitrate_limit = {1 : [-1, 512, 128, 128],
+                      2 : [512, -1, 128, 128],
+                      3 : [-1, -1],
+                      4 : [-1, -1],
+                      }
 
-
+# Store port statistics for each switch and port (switch_id : [[tx_bytes, rx_bytes] for each port])
+ports_bytes_stats = {1 : [[0,0], [0,0], [0,0], [0,0]], 
+                     2 : [[0,0], [0,0], [0,0], [0,0]], 
+                     3 : [[0,0], [0,0]], 
+                     4 : [[0,0], [0,0]]}
+# Store port statistics 1 sec ago for each switch and port (switch_id : [[tx_bytes, rx_bytes] for each port])
+ports_bytes_stats_old = {1 : [[0,0], [0,0], [0,0], [0,0]], 
+                         2 : [[0,0], [0,0], [0,0], [0,0]], 
+                         3 : [[0,0], [0,0]], 
+                         4 : [[0,0], [0,0]]}
 
 
 class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
@@ -22,35 +37,10 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         super(SimpleSwitch, self).__init__(*args, **kwargs)
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self._monitor)
-    """
-    # Handler for OFPSwitchFeatures messages
-    @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
-    def _features_reply_handler(self, ev):
-        self.logger.info('**Received OFPSwitchFeatures from datapath: %08x', ev.msg.datapath.id)
 
-        datapath = ev.msg.datapath
-        openFlowProtocol = datapath.ofproto
-        parser = datapath.ofproto_parser
-
-        match = parser.OFPMatch()
-        actions = [parser.OFPActionOutput(openFlowProtocol.OFPP_CONTROLLER,
-                                          openFlowProtocol.OFPCML_NO_BUFFER)]
-        self.add_flow(datapath, 0, match, actions)
-    """
     # Add a flow to the datapath
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-
-        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
-        if buffer_id:
-            mod = parser.OFPFlowMod(datapath=datapath, buffer_id=buffer_id,
-                                    priority=priority, match=match,
-                                    instructions=inst)
-        else:
-            mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
-                                    match=match, instructions=inst)
-        datapath.send_msg(mod)
+        super(SimpleSwitch, self).add_flow(datapath, priority, match, actions, buffer_id)
 
     # Handler for state change events
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
@@ -86,14 +76,4 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         body = ev.msg.body
-        """
-        self.logger.info('-------------------------------------------------------------------------------')
-        self.logger.info('datapath         port     rx-pkts  rx-bytes rx-error tx-pkts  tx-bytes tx-error')
-        self.logger.info('-------------------------------------------------------------------------------')
-        for stat in sorted(body, key=attrgetter('port_no')):
-            self.logger.info('%08x %8x %8d %8d %8d %8d %8d %8d',
-                            ev.msg.datapath.id, stat.port_no,
-                            stat.rx_packets, stat.rx_bytes, stat.rx_errors,
-                            stat.tx_packets, stat.tx_bytes, stat.tx_errors)
-        self.logger.info("")
-        """
+        
