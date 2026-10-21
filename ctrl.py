@@ -1,4 +1,4 @@
-from ryu.base import app_manager
+from ryu.app import simple_switch_stp_13
 from operator import attrgetter
 from ryu.controller import ofp_event
 from ryu.controller.handler import (
@@ -14,7 +14,7 @@ from ryu.ofproto import ofproto_v1_3
 
 
 
-class SimpleSwitch(app_manager.RyuApp):
+class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     # Initialize the controller app
@@ -22,7 +22,7 @@ class SimpleSwitch(app_manager.RyuApp):
         super(SimpleSwitch, self).__init__(*args, **kwargs)
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self._monitor)
-
+    """
     # Handler for OFPSwitchFeatures messages
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def _features_reply_handler(self, ev):
@@ -36,7 +36,7 @@ class SimpleSwitch(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(openFlowProtocol.OFPP_CONTROLLER,
                                           openFlowProtocol.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
-
+    """
     # Add a flow to the datapath
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
@@ -86,7 +86,7 @@ class SimpleSwitch(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         body = ev.msg.body
-        
+        """
         self.logger.info('-------------------------------------------------------------------------------')
         self.logger.info('datapath         port     rx-pkts  rx-bytes rx-error tx-pkts  tx-bytes tx-error')
         self.logger.info('-------------------------------------------------------------------------------')
@@ -96,3 +96,4 @@ class SimpleSwitch(app_manager.RyuApp):
                             stat.rx_packets, stat.rx_bytes, stat.rx_errors,
                             stat.tx_packets, stat.tx_bytes, stat.tx_errors)
         self.logger.info("")
+        """
