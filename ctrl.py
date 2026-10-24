@@ -1,8 +1,6 @@
 from ryu.app import simple_switch_stp_13
-from operator import attrgetter
 from ryu.controller import ofp_event
 from ryu.controller.handler import (
-    CONFIG_DISPATCHER,
     DEAD_DISPATCHER,
     MAIN_DISPATCHER,
     set_ev_cls,
