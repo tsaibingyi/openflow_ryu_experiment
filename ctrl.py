@@ -24,31 +24,28 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                                    2 : [64, -1, 16, 16],
                                    3 : [-1, -1],
                                    4 : [-1, -1]}
-        # Store port statistics for each switch and port (switch_id : [[tx_bytes, rx_bytes] for each port])
-        self.ports_stats = {1 : [[0,0], [0,0], [0,0], [0,0]],
-                            2 : [[0,0], [0,0], [0,0], [0,0]],
-                            3 : [[0,0], [0,0]],
-                            4 : [[0,0], [0,0]]}
-        # Store port statistics 1 sec ago for each switch and port (switch_id : [[tx_bytes, rx_bytes] for each port])
-        self.ports_stats_old = {1 : [[0,0], [0,0], [0,0], [0,0]],
-                                2 : [[0,0], [0,0], [0,0], [0,0]],
-                                3 : [[0,0], [0,0]],
-                                4 : [[0,0], [0,0]]}
-        # Store port bitrate (1 sec average) for each switch and port (switch_id : [[tx_bitrate, rx_bitrate] for each port])
-        self.ports_bitrate = {1 : [[0,0], [0,0], [0,0], [0,0]],
-                              2 : [[0,0], [0,0], [0,0], [0,0]], 
-                              3 : [[0,0], [0,0]],
-                              4 : [[0,0], [0,0]]}
+        # Store port statistics for each switch and port (datapath_id : {port_no: [tx_bytes, rx_bytes]})
+        self.ports_stats = {}
+        # Store port statistics 1 sec ago for each switch and port (datapath_id : {port_no: [tx_bytes, rx_bytes]})
+        self.ports_stats_old = {}
+        # Store port bitrate (1 sec average) for each switch and port (datapath_id : {port_no: [tx_bitrate(B/s), rx_bitrate(B/s)]})
+        self.ports_bitrate = {}
 
 
     # Handler for state change events
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
         datapath = ev.datapath
+        port_no = list(datapath.ports.keys())
+        
         if ev.state == MAIN_DISPATCHER:
             if not datapath.id in self.datapaths:
                 self.logger.info('**Register datapath: %04x', datapath.id)
                 self.datapaths[datapath.id] = datapath
+                self.ports_stats[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
+                self.ports_stats_old[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
+                self.ports_bitrate[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
+
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
                 self.logger.info('**Unregister datapath: %04x', datapath.id)
@@ -84,17 +81,17 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                 continue
             tx_bytes = stat.tx_bytes
             rx_bytes = stat.rx_bytes
-            self.ports_stats_old[dpid][port_no-1][0] = self.ports_stats[dpid][port_no-1][0]
-            self.ports_stats_old[dpid][port_no-1][1] = self.ports_stats[dpid][port_no-1][1]
-            self.ports_stats[dpid][port_no-1][0] = tx_bytes
-            self.ports_stats[dpid][port_no-1][1] = rx_bytes
-            self.ports_bitrate[dpid][port_no-1][0] = (self.ports_stats[dpid][port_no-1][0] - self.ports_stats_old[dpid][port_no-1][0]) * 8 / 10**3
-            self.ports_bitrate[dpid][port_no-1][1] = (self.ports_stats[dpid][port_no-1][1] - self.ports_stats_old[dpid][port_no-1][1]) * 8 / 10**3
+            self.ports_stats_old[dpid][port_no][0] = self.ports_stats[dpid][port_no][0]
+            self.ports_stats_old[dpid][port_no][1] = self.ports_stats[dpid][port_no][1]
+            self.ports_stats[dpid][port_no][0] = tx_bytes
+            self.ports_stats[dpid][port_no][1] = rx_bytes
+            self.ports_bitrate[dpid][port_no][0] = (self.ports_stats[dpid][port_no][0] - self.ports_stats_old[dpid][port_no][0]) * 8 / 10**3
+            self.ports_bitrate[dpid][port_no][1] = (self.ports_stats[dpid][port_no][1] - self.ports_stats_old[dpid][port_no][1]) * 8 / 10**3
             self.log_port_bitrate()
 
     # Log the current port bitrate for all datapaths
     def log_port_bitrate(self):
         for dpid, ports in self.ports_bitrate.items():
-            for port_no, bitrate in enumerate(ports, start=1):
+            for port_no, bitrate in ports.items():
                 self.logger.info('Datapath: {:04x}, Port: {}, TX: {:>7,} Kbps, RX: {:>7,} Kbps'.format(dpid, port_no, bitrate[0], bitrate[1]))
         self.logger.info(' ')
