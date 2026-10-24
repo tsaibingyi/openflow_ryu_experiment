@@ -14,19 +14,18 @@ from ryu.ofproto import ofproto_v1_3
 port_bitrate_limit = {1 : [-1, 64, 16, 16],
                       2 : [64, -1, 16, 16],
                       3 : [-1, -1],
-                      4 : [-1, -1],
-                      }
+                      4 : [-1, -1]}
 
 # Store port statistics for each switch and port (switch_id : [[tx_bytes, rx_bytes] for each port])
 ports_stats = {1 : [[0,0], [0,0], [0,0], [0,0]], 
-                     2 : [[0,0], [0,0], [0,0], [0,0]], 
-                     3 : [[0,0], [0,0]], 
-                     4 : [[0,0], [0,0]]}
+               2 : [[0,0], [0,0], [0,0], [0,0]], 
+               3 : [[0,0], [0,0]], 
+               4 : [[0,0], [0,0]]}
 # Store port statistics 1 sec ago for each switch and port (switch_id : [[tx_bytes, rx_bytes] for each port])
 ports_stats_old = {1 : [[0,0], [0,0], [0,0], [0,0]], 
-                         2 : [[0,0], [0,0], [0,0], [0,0]], 
-                         3 : [[0,0], [0,0]], 
-                         4 : [[0,0], [0,0]]}
+                   2 : [[0,0], [0,0], [0,0], [0,0]], 
+                   3 : [[0,0], [0,0]], 
+                   4 : [[0,0], [0,0]]}
 # Store port bitrate (1 sec average) for each switch and port (switch_id : [[tx_bitrate, rx_bitrate] for each port])
 ports_bitrate = {1 : [[0,0], [0,0], [0,0], [0,0]], 
                  2 : [[0,0], [0,0], [0,0], [0,0]], 
@@ -94,7 +93,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             ports_bitrate[dpid][port_no-1][1] = (ports_stats[dpid][port_no-1][1] - ports_stats_old[dpid][port_no-1][1]) * 8 / 10**3
             self.log_port_bitrate()
 
-
+    # Log the current port bitrate for all datapaths
     def log_port_bitrate(self):
         for dpid, ports in ports_bitrate.items():
             for port_no, bitrate in enumerate(ports, start=1):
