@@ -49,11 +49,11 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         datapath = ev.datapath
         if ev.state == MAIN_DISPATCHER:
             if not datapath.id in self.datapaths:
-                self.logger.info('**Register datapath: %08x', datapath.id)
+                self.logger.info('**Register datapath: %04x', datapath.id)
                 self.datapaths[datapath.id] = datapath
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
-                self.logger.info('**Unregister datapath: %08x', datapath.id)
+                self.logger.info('**Unregister datapath: %04x', datapath.id)
                 del self.datapaths[datapath.id]
 
     # Periodically request stats from all datapaths
@@ -65,7 +65,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
 
     # Send network port stats request to the datapath
     def _request_stats(self, datapath):
-        self.logger.debug('**send stats request: %08x', datapath.id)
+        self.logger.debug('**send stats request: %04x', datapath.id)
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
@@ -98,6 +98,5 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
     def log_port_bitrate(self):
         for dpid, ports in ports_bitrate.items():
             for port_no, bitrate in enumerate(ports, start=1):
-                self.logger.info('Datapath: %08x, Port: %d, TX bitrate: %d Kbps, RX bitrate: %d Kbps',
-                                 dpid, port_no, int(bitrate[0]), int(bitrate[1]))
+                self.logger.info('Datapath: {:04x}, Port: {}, TX: {:>7,} Kbps, RX: {:>7,} Kbps'.format(dpid, port_no, bitrate[0], bitrate[1]))
         self.logger.info(' ')
