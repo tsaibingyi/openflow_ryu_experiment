@@ -2,8 +2,8 @@
 
 NUM=30
 TARGET_BIT_RATE=3M
-TIME=30
-SLEEP=0.5
+TIME=60
+SLEEP=1
 SERVER_IP=10.0.0.2
 
 START_PORT=10001
@@ -16,8 +16,5 @@ for i in $(seq 1 ${NUM}); do
     sleep ${SLEEP}
 done
 echo "${NUM} iperf3 clients (Port ${START_PORT}-$((START_PORT + NUM - 1))) are started"
-
-sleep $(echo "${TIME} - ${SLEEP} * ${NUM}" | bc)
-echo "Test finished"
 
 wait
