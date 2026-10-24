@@ -11,8 +11,8 @@ from ryu.lib import hub
 from ryu.ofproto import ofproto_v1_3
 
 # Port bitrate limits for each switch and port (switch_id : [bitrate_limit(Mbps) for each port])
-port_bitrate_limit = {1 : [-1, 512, 128, 128],
-                      2 : [512, -1, 128, 128],
+port_bitrate_limit = {1 : [-1, 64, 16, 16],
+                      2 : [64, -1, 16, 16],
                       3 : [-1, -1],
                       4 : [-1, -1],
                       }

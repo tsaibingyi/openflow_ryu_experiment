@@ -32,16 +32,16 @@ def myNetwork():
 
     info( '*** Add links\n')
     net.addLink(h1, s1)
-    s1s2 = {'bw':512}
+    s1s2 = {'bw':64}
     net.addLink(s1, s2, cls=TCLink , **s1s2)
     net.addLink(s2, h2)
-    s1s3 = {'bw':128}
+    s1s3 = {'bw':16}
     net.addLink(s1, s3, cls=TCLink , **s1s3)
-    s2s3 = {'bw':128}
+    s2s3 = {'bw':16}
     net.addLink(s2, s3, cls=TCLink , **s2s3)
-    s1s4 = {'bw':128}
+    s1s4 = {'bw':16}
     net.addLink(s1, s4, cls=TCLink , **s1s4)
-    s2s4 = {'bw':128}
+    s2s4 = {'bw':16}
     net.addLink(s2, s4, cls=TCLink , **s2s4)
 
     info( '*** Starting network\n')
@@ -65,7 +65,7 @@ def do_start_server(self, line):
     
     cmd = "xterm -hold -e 'bash /media/sf_VboxShare/udp_ctrl/Mininet_CLI_Func/server.sh' &"
     h2.cmd(cmd)
-    print("The Server has been started on h2.")
+    print("The Server is started on h2.")
 CLI.do_start_server = do_start_server
 
 def do_start_test(self, line):
@@ -75,7 +75,7 @@ def do_start_test(self, line):
     cmd = "xterm -hold -e 'bash /media/sf_VboxShare/udp_ctrl/Mininet_CLI_Func/client.sh' &"
     h1 = net.get('h1')
     h1.cmd(cmd)
-    print("The Client Test has been started on h1.")
+    print("The Client Test is started on h1.")
 CLI.do_start_test = do_start_test
 
 if __name__ == '__main__':
