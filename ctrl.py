@@ -31,7 +31,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         self.ports_stats_old = {}
         # Store port bitrate (1 sec average) for each switch and port (datapath_id : {port_no: [tx_bitrate(B/s), rx_bitrate(B/s)]})
         self.ports_bitrate = {}
-        self.bitrate_threshold = 0.9  # 90% of the port bitrate limit
+        self.bitrate_threshold = 0.9  # the port bitrate limit
 
 
     # Handler for state change events
@@ -111,9 +111,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         eth = pkt.get_protocol(ethernet.ethernet)
         if eth.ethertype == ether_types.ETH_TYPE_LLDP or eth.dst.startswith('01:80:c2:'):
             return
-        
-        src = eth.src 
-        dst = eth.dst
         match_ip = pkt.get_protocol(ipv4.ipv4)
         
         # IP flow control for specific switches
