@@ -41,7 +41,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         port_no = list(datapath.ports.keys())
         
         if ev.state == MAIN_DISPATCHER:
-            if not datapath.id in self.datapaths:
+            if datapath.id not in self.datapaths:
                 self.logger.info('**Register datapath: %04x', datapath.id)
                 self.datapaths[datapath.id] = datapath
                 self.ports_stats[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
@@ -120,9 +120,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         if dpid == 1 and match_ip and in_port == 1:
             self.s1_ip_flow_ctrl(datapath, parser, ofproto, msg, in_port)
             return
-        elif dpid == 2 and match_ip and in_port == 2:
-            self.s2_ip_flow_ctrl(datapath, parser, ofproto, msg, in_port)
-            return
         super(SimpleSwitch, self)._packet_in_handler(ev)
 
     
@@ -162,41 +159,3 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                                     in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
         return
-
-    def s2_ip_flow_ctrl(self, datapath, parser, ofproto, msg, in_port):
-        s2p1_tx = self.ports_bitrate.get(2, {}).get(1, [0, 0])[0]
-        s2p3_tx = self.ports_bitrate.get(2, {}).get(3, [0, 0])[0]
-        s1p2_rx = self.ports_bitrate.get(1, {}).get(2, [0, 0])[1]
-        s1p3_rx = self.ports_bitrate.get(1, {}).get(3, [0, 0])[1]
-
-        port1_limit = self.port_bitrate_limit[2][1] * self.bitrate_threshold
-        port3_limit = self.port_bitrate_limit[2][3] * self.bitrate_threshold
-
-        if max(s2p1_tx, s1p2_rx) >= port1_limit:
-            if max(s2p3_tx, s1p3_rx) >= port3_limit:
-                out_port = 2
-            else:
-                out_port = 3
-        else:
-            out_port = 1
-
-        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
-                                ipv4_src='10.0.0.2',
-                                ipv4_dst='10.0.0.1')
-        actions = [parser.OFPActionOutput(out_port)]
-
-        mod = parser.OFPFlowMod(datapath=datapath, priority=10,
-                                match=match,
-                                instructions=[parser.OFPInstructionActions(
-                                    ofproto.OFPIT_APPLY_ACTIONS, actions)],
-                                idle_timeout=5, hard_timeout=15)
-        datapath.send_msg(mod)
-
-        data = None
-        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-            data = msg.data
-        out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
-                                    in_port=in_port, actions=actions, data=data)
-        datapath.send_msg(out)
-        return
-    
