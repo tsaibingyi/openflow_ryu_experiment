@@ -6,7 +6,7 @@ from ryu.controller.handler import (
     set_ev_cls,
 )
 from ryu.lib import hub
-from ryu.lib.packet import packet, ethernet, ipv4, ether_types
+from ryu.lib.packet import packet, ethernet, ipv4, udp, ether_types
 from ryu.ofproto import ofproto_v1_3
 
 
@@ -121,6 +121,9 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
 
     
     def s1_ip_flow_ctrl(self, datapath, parser, ofproto, msg, in_port):
+        pkt = packet.Packet(msg.data)
+        udp_pkt = pkt.get_protocol(udp.udp)
+
         s1p2_tx = self.ports_bitrate.get(1, {}).get(2, [0, 0])[0]
         s1p3_tx = self.ports_bitrate.get(1, {}).get(3, [0, 0])[0]
         s2p1_rx = self.ports_bitrate.get(2, {}).get(1, [0, 0])[1]
@@ -129,6 +132,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         port2_limit = self.port_bitrate_limit[1][2] * self.bitrate_threshold
         port3_limit = self.port_bitrate_limit[1][3] * self.bitrate_threshold
 
+        # Determine the output port based on the current port utilization and limits
         if max(s1p2_tx, s2p1_rx) >= port2_limit:
             if max(s1p3_tx, s2p3_rx) >= port3_limit:
                 out_port = 4
@@ -137,18 +141,28 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         else:
             out_port = 2
 
-        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
-                                ipv4_src='10.0.0.1',
-                                ipv4_dst='10.0.0.2')
-        actions = [parser.OFPActionOutput(out_port)]
+        # Determine the flow match based on whether it's a UDP packet or not
+        if udp_pkt:
+            match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                    ip_proto=17,
+                                    ipv4_src='10.0.0.1',
+                                    ipv4_dst='10.0.0.2',
+                                    udp_dst=udp_pkt.dst_port)
+        else:
+            match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                    ipv4_src='10.0.0.1',
+                                    ipv4_dst='10.0.0.2')
         
+        actions = [parser.OFPActionOutput(out_port)]
+
+        # Install the flow entry in the switch
         mod = parser.OFPFlowMod(datapath=datapath, priority=10,
                                 match=match,
-                                instructions=[parser.OFPInstructionActions(
-                                    ofproto.OFPIT_APPLY_ACTIONS, actions)],
-                                idle_timeout=5, hard_timeout=15)
+                                instructions=[parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)],
+                                idle_timeout=10, hard_timeout=30)
         datapath.send_msg(mod)
 
+        # Send the packet out immediately after installing the flow entry
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
             data = msg.data
