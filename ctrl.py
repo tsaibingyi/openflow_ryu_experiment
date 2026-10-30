@@ -1,14 +1,13 @@
+from ryu import cfg
 from ryu.app import simple_switch_stp_13
 from ryu.controller import ofp_event
-from ryu.controller.handler import (
-    DEAD_DISPATCHER,
-    MAIN_DISPATCHER,
-    set_ev_cls,
-)
+from ryu.controller.handler import DEAD_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from ryu.lib import hub
 from ryu.lib.packet import packet, ethernet, ipv4, udp, ether_types
 from ryu.ofproto import ofproto_v1_3
 
+CONF = cfg.CONF
+CONF.set_default('n_table_id', 1, group='stplib')
 
 class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -38,7 +37,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
         datapath = ev.datapath
-        port_no = list(datapath.ports.keys())
+        port_no = list(datapath.ports.keys()) if hasattr(datapath, 'ports') else []
         
         if ev.state == MAIN_DISPATCHER:
             if datapath.id not in self.datapaths:
@@ -47,6 +46,18 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                 self.ports_stats[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
                 self.ports_stats_old[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
                 self.ports_bitrate[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
+
+                # Install a default flow to go to table 1 after table 0
+                parser = datapath.ofproto_parser
+                ofproto = datapath.ofproto
+                match = parser.OFPMatch()
+                inst = [parser.OFPInstructionGotoTable(1)]
+                mod = parser.OFPFlowMod(datapath=datapath,
+                                        table_id=0,
+                                        priority=0,
+                                        match=match,
+                                        instructions=inst)
+                datapath.send_msg(mod)
 
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
@@ -174,7 +185,9 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         actions = [parser.OFPActionOutput(out_port)]
 
         # Install a flow entry in the switch
-        mod = parser.OFPFlowMod(datapath=datapath, priority=10,
+        mod = parser.OFPFlowMod(datapath=datapath,
+                                table_id=0,
+                                priority=10,
                                 match=match,
                                 instructions=[parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)],
                                 idle_timeout=10, hard_timeout=30)
