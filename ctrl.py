@@ -1,4 +1,3 @@
-from ryu import cfg
 from ryu.app import simple_switch_stp_13
 from ryu.controller import ofp_event
 from ryu.controller.handler import DEAD_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
@@ -6,16 +5,20 @@ from ryu.lib import hub
 from ryu.lib.packet import packet, ethernet, ipv4, udp, ether_types
 from ryu.ofproto import ofproto_v1_3
 
-CONF = cfg.CONF
-CONF.set_default('n_table_id', 1, group='stplib')
 
 class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     # Initialize the controller app
     def __init__(self, *args, **kwargs):
+        # Set the default table ID for the STP library to 1
+        from ryu import cfg
+        table_id_opt = cfg.IntOpt('n_table_id', default=1, help='STP table ID')
+        cfg.CONF.register_opt(table_id_opt, group='stplib')
+
         super(SimpleSwitch, self).__init__(*args, **kwargs)
         self.monitor_thread = hub.spawn(self._monitor)
+
         self.datapaths = {}
         # Port bitrate limits for each switch and port (switch_id : {port_no: bitrate_limit(Kbps)})
         self.port_bitrate_limit = {
