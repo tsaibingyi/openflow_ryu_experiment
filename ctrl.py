@@ -32,6 +32,8 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         # Store port bitrate (1 sec average) for each switch and port (datapath_id : {port_no: [tx_bitrate(Kbps), rx_bitrate(Kbps)]})
         self.ports_bitrate = {}
         self.bitrate_threshold = 0.9  # the port bitrate limit
+        # Store flow statistics for each switch (datapath_id : [flow_stats])
+        self.flow_stats = {}
 
 
     # Handler for state change between MAIN_DISPATCHER and DEAD_DISPATCHER
@@ -53,15 +55,18 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                 self.logger.info('**Unregister datapath: %04x', datapath.id)
                 del self.datapaths[datapath.id]
 
+
     # Periodically request stats from all datapaths (every 1 second)
     def _monitor(self):
         while True:
             for dp in self.datapaths.values():
-                self._request_stats(dp)
+                self._request_port_stats(dp)
+                self._request_flow_stats(dp)
             hub.sleep(1)
 
+
     # Send network port stats request to {datapath}
-    def _request_stats(self, datapath):
+    def _request_port_stats(self, datapath):
         self.logger.debug('**send stats request: %04x', datapath.id)
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -69,8 +74,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         req = parser.OFPPortStatsRequest(datapath, 0, ofproto.OFPP_ANY)
         datapath.send_msg(req)
 
-
-    # Handler for port stats reply events
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         dpid = ev.msg.datapath.id
@@ -103,14 +106,30 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             # Calculate bitrate in Kbps based on the difference between current and old stats
             self.ports_bitrate[dpid][port_no][0] = (self.ports_stats[dpid][port_no][0] - self.ports_stats_old[dpid][port_no][0]) * 8 / 10**3
             self.ports_bitrate[dpid][port_no][1] = (self.ports_stats[dpid][port_no][1] - self.ports_stats_old[dpid][port_no][1]) * 8 / 10**3
-            self.log_port_bitrate()
+            self._log_port_bitrate()
 
     # Log the current port bitrate for all datapaths
-    def log_port_bitrate(self):
+    def _log_port_bitrate(self):
         for dpid, ports in self.ports_bitrate.items():
             for port_no, bitrate in ports.items():
                 self.logger.info('Datapath: {:04x}, Port: {}, TX: {:>7,} Kbps, RX: {:>7,} Kbps'.format(dpid, port_no, bitrate[0], bitrate[1]))
         self.logger.info(' ')
+    
+
+    # Send flow stats request to {datapath}
+    def _request_flow_stats(self, datapath):
+        self.logger.debug('**send flow stats request: %04x', datapath.id)
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        req = parser.OFPFlowStatsRequest(datapath)
+        datapath.send_msg(req)
+
+    @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
+    def _flow_stats_reply_handler(self, ev):
+        dpid = ev.msg.datapath.id
+        body = ev.msg.body
+        self.flow_stats[dpid] = body
 
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -131,13 +150,13 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         
         # IP flow control for specific switches
         if dpid == 1 and match_ip and in_port == 1:
-            self.s1_ip_flow_ctrl(datapath, parser, ofproto, msg, in_port)
+            self._s1_ip_flow_ctrl(datapath, parser, ofproto, msg, in_port)
             return
         # Call the default packet-in handler for other packets
         super(SimpleSwitch, self)._packet_in_handler(ev)
 
     # Implement IP flow control logic for switch 1 based on port utilization and bitrate limits
-    def s1_ip_flow_ctrl(self, datapath, parser, ofproto, msg, in_port):
+    def _s1_ip_flow_ctrl(self, datapath, parser, ofproto, msg, in_port):
         pkt = packet.Packet(msg.data)
         udp_pkt = pkt.get_protocol(udp.udp)
 
@@ -188,3 +207,18 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                                     in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
         return
+
+    def _has_stp_drop_rule(self, datapath, target_in_port):
+        dpid = datapath.id
+        if dpid not in self.flow_stats:
+            return False
+        for flow in self.flow_stats[dpid]:
+            if flow.priority != 65534:
+                continue
+            instructions = flow.instructions
+            if instructions:
+                continue
+            in_port = flow.match.get('in_port')
+            if in_port == target_in_port:
+                return True
+        return False
