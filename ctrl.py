@@ -83,11 +83,26 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                 self.ports_stats[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
                 self.ports_stats_old[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
                 self.ports_bitrate[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
+                self._install_default_udp_handler(datapath)
 
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
                 self.logger.info('**Unregister datapath: %04x', datapath.id)
                 del self.datapaths[datapath.id]
+
+    def _install_default_udp_handler(self, datapath):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        match = parser.OFPMatch(eth_type=0x0800, ip_proto=17)  # Match IPv4 UDP packets
+        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
+        mod = parser.OFPFlowMod(
+            datapath=datapath,
+            priority=500,
+            match=match,
+            instructions=inst
+        )
+        datapath.send_msg(mod)
 
 
     # Periodically request stats from all datapaths (every 1 second)
