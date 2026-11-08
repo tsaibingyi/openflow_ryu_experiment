@@ -42,18 +42,23 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         parser = datapath.ofproto_parser
         if match_fields is None:
             match = parser.OFPMatch()
-        else:
+        elif isinstance(match_fields, dict):
             match = parser.OFPMatch(**match_fields)
+        else:
+            match = match_fields
         
         if out_port is None:
             target_out_port = ofproto.OFPP_ANY
         else:
             target_out_port = out_port
+        
         if out_group is None:
             target_out_group = ofproto.OFPG_ANY
         else:
             target_out_group = out_group
+        
         target_priority = priority if priority is not None else 1
+
         mod = parser.OFPFlowMod(
             datapath=datapath,
             command=ofproto.OFPFC_DELETE_STRICT,
@@ -184,6 +189,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         # Call the default packet-in handler for other packets
         super(SimpleSwitch, self)._packet_in_handler(ev)
 
+
     # Implement IP flow control logic for switch 1 based on port utilization and bitrate limits
     def _s1_ip_flow_ctrl(self, datapath, parser, ofproto, msg, in_port):
         pkt = packet.Packet(msg.data)
@@ -221,8 +227,17 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         
         actions = [parser.OFPActionOutput(out_port)]
 
+        if out_port == 2:
+            self.replace_stp_drop_rule(target_dpid=2, target_in_port=1)
+        elif out_port == 3:
+            self.replace_stp_drop_rule(target_dpid=3, target_in_port=1)
+            self.replace_stp_drop_rule(target_dpid=2, target_in_port=3)
+        elif out_port == 4:
+            self.replace_stp_drop_rule(target_dpid=4, target_in_port=1)
+            self.replace_stp_drop_rule(target_dpid=2, target_in_port=4)
+
         # Install a flow entry in the switch
-        mod = parser.OFPFlowMod(datapath=datapath, priority=10,
+        mod = parser.OFPFlowMod(datapath=datapath, priority=1000,
                                 match=match,
                                 instructions=[parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)],
                                 idle_timeout=10, hard_timeout=30)
@@ -237,17 +252,25 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         datapath.send_msg(out)
         return
 
-    def _has_stp_drop_rule(self, datapath, target_in_port):
-        dpid = datapath.id
-        if dpid not in self.flow_stats:
-            return False
-        for flow in self.flow_stats[dpid]:
-            if flow.priority != 65534:
+    def replace_stp_drop_rule(self, target_dpid, target_in_port):
+        if target_dpid not in self.flow_stats:
+            return
+        
+        for flow in self.flow_stats.get(target_dpid, []):
+            datapath = self.datapaths[target_dpid]
+            if flow.priority != 65534 or not flow.instructions:
                 continue
-            instructions = flow.instructions
-            if instructions:
-                continue
+
             in_port = flow.match.get('in_port')
             if in_port == target_in_port:
-                return True
-        return False
+                self.del_flow(datapath=datapath,
+                              match_fields=flow.match,
+                              priority=flow.priority)
+
+                ofproto = datapath.ofproto
+                parser = datapath.ofproto_parser
+                mod = parser.OFPFlowMod(datapath=datapath,
+                                        priority=100,
+                                        match=flow.match,
+                                        instructions=[])
+                datapath.send_msg(mod)
