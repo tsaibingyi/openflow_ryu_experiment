@@ -36,6 +36,35 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         self.flow_stats = {}
 
 
+    # Delete a flow entry from the switch with optional match fields, priority, output port, and output group
+    def del_flow(self, datapath, match_fields=None, priority=None, out_port=None, out_group=None):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        if match_fields is None:
+            match = parser.OFPMatch()
+        else:
+            match = parser.OFPMatch(**match_fields)
+        
+        if out_port is None:
+            target_out_port = ofproto.OFPP_ANY
+        else:
+            target_out_port = out_port
+        if out_group is None:
+            target_out_group = ofproto.OFPG_ANY
+        else:
+            target_out_group = out_group
+        target_priority = priority if priority is not None else 1
+        mod = parser.OFPFlowMod(
+            datapath=datapath,
+            command=ofproto.OFPFC_DELETE_STRICT,
+            out_port=target_out_port,
+            out_group=target_out_group,
+            priority=target_priority,
+            match=match
+        )
+        datapath.send_msg(mod)
+
+
     # Handler for state change between MAIN_DISPATCHER and DEAD_DISPATCHER
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
