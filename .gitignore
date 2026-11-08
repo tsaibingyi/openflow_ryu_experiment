@@ -4,3 +4,4 @@ ctrl.pyc
 .vscode
 not_for_git
 .venv
+rate_log.csv

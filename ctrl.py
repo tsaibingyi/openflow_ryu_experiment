@@ -1,3 +1,5 @@
+import csv
+import io
 from ryu.app import simple_switch_stp_13
 from ryu.controller import ofp_event
 from ryu.controller.handler import (
@@ -34,6 +36,23 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         self.bitrate_threshold = 0.9  # the port bitrate limit
         # Store flow statistics for each switch (datapath_id : [flow_stats])
         self.flow_stats = {}
+        # Initialize CSV log file and write header if not exists
+        self.time_counter = 0
+        self._init_csv_log()
+        
+
+    def _init_csv_log(self):
+        try:
+            # Check if file already exists to decide whether to write header
+            with open('rate_log.csv', 'r') as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                if header is None:
+                    raise StopIteration
+        except (IOError, StopIteration):
+            with open('rate_log.csv', 'w') as f:
+                writer = csv.writer(f)
+                writer.writerow(['time', '1---2:tx', '1-3-2:tx', '1-4-2:tx', '1---2:rx', '1-3-2:rx', '1-4-2:rx'])
 
 
     # Delete a flow entry from the switch with optional match fields, priority, output port, and output group
@@ -111,6 +130,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             for dp in self.datapaths.values():
                 self._request_port_stats(dp)
                 self._request_flow_stats(dp)
+            self._log_link_bitrate()
             hub.sleep(1)
 
 
@@ -155,7 +175,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             # Calculate bitrate in Kbps based on the difference between current and old stats
             self.ports_bitrate[dpid][port_no][0] = (self.ports_stats[dpid][port_no][0] - self.ports_stats_old[dpid][port_no][0]) * 8 / 10**3
             self.ports_bitrate[dpid][port_no][1] = (self.ports_stats[dpid][port_no][1] - self.ports_stats_old[dpid][port_no][1]) * 8 / 10**3
-            self._log_link_bitrate()
 
     # Log the current bitrate for each link
     def _log_link_bitrate(self):
@@ -179,10 +198,29 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                               self.ports_bitrate.get(4, {}).get(2, [0, 0])[1],
                               self.ports_bitrate.get(4, {}).get(1, [0, 0])[0],
                               self.ports_bitrate.get(1, {}).get(4, [0, 0])[1])
+        # Log the link bitrate to terminal
         self.logger.info('1---2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link12_bitrate, link21_bitrate))
         self.logger.info('1-3-2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link132_bitrate, link231_bitrate))
         self.logger.info('1-4-2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link142_bitrate, link241_bitrate))
         self.logger.info('')
+        # Log the link bitrate to CSV file
+        self.time_counter += 1
+        row_data = [
+            self.time_counter,
+            link12_bitrate,
+            link132_bitrate,
+            link142_bitrate,
+            link21_bitrate,
+            link231_bitrate,
+            link241_bitrate
+        ]
+
+        try:
+            with open('rate_log.csv', 'a') as f:
+                writer = csv.writer(f)
+                writer.writerow(row_data)
+        except IOError as e:
+            self.logger.error('Failed to write to rate_log.csv: %s', str(e))
     
 
     # Send flow stats request to {datapath}
