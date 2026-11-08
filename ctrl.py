@@ -102,12 +102,16 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                 self.ports_stats[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
                 self.ports_stats_old[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
                 self.ports_bitrate[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
-                self._install_default_udp_handler(datapath)
+                if datapath.id == 1:
+                    self._install_default_udp_handler(datapath)
 
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
                 self.logger.info('**Unregister datapath: %04x', datapath.id)
                 del self.datapaths[datapath.id]
+                del self.ports_stats[datapath.id]
+                del self.ports_stats_old[datapath.id]
+                del self.ports_bitrate[datapath.id]
 
     def _install_default_udp_handler(self, datapath):
         ofproto = datapath.ofproto
@@ -287,12 +291,15 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             out_port = 2
 
         # Determine the flow match based on whether it's a UDP packet or not
+        priority = 1000
         if udp_pkt:
             match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
                                     ip_proto=17,
                                     ipv4_src='10.0.0.1',
                                     ipv4_dst='10.0.0.2',
                                     udp_dst=udp_pkt.dst_port)
+            if udp_pkt.dst_port > 10000 and udp_pkt.dst_port < 10100:
+                priority = 2000
         else:
             match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
                                     ipv4_src='10.0.0.1',
@@ -310,7 +317,8 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             self.replace_stp_drop_rule(target_dpid=2, target_in_port=4)
 
         # Install a flow entry in the switch
-        mod = parser.OFPFlowMod(datapath=datapath, priority=1000,
+        mod = parser.OFPFlowMod(datapath=datapath, 
+                                priority=priority,
                                 match=match,
                                 instructions=[parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)],
                                 idle_timeout=10, hard_timeout=30)
