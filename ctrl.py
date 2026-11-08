@@ -140,14 +140,34 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             # Calculate bitrate in Kbps based on the difference between current and old stats
             self.ports_bitrate[dpid][port_no][0] = (self.ports_stats[dpid][port_no][0] - self.ports_stats_old[dpid][port_no][0]) * 8 / 10**3
             self.ports_bitrate[dpid][port_no][1] = (self.ports_stats[dpid][port_no][1] - self.ports_stats_old[dpid][port_no][1]) * 8 / 10**3
-            self._log_port_bitrate()
+            self._log_link_bitrate()
 
-    # Log the current port bitrate for all datapaths
-    def _log_port_bitrate(self):
-        for dpid, ports in self.ports_bitrate.items():
-            for port_no, bitrate in ports.items():
-                self.logger.info('Datapath: {:04x}, Port: {}, TX: {:>7,} Kbps, RX: {:>7,} Kbps'.format(dpid, port_no, bitrate[0], bitrate[1]))
-        self.logger.info(' ')
+    # Log the current bitrate for each link
+    def _log_link_bitrate(self):
+        link12_bitrate = max(self.ports_bitrate.get(1, {}).get(2, [0, 0])[0],
+                             self.ports_bitrate.get(2, {}).get(1, [0, 0])[1])
+        link21_bitrate = max(self.ports_bitrate.get(2, {}).get(1, [0, 0])[0],
+                             self.ports_bitrate.get(1, {}).get(2, [0, 0])[1])
+        link132_bitrate = max(self.ports_bitrate.get(1, {}).get(3, [0, 0])[0],
+                              self.ports_bitrate.get(3, {}).get(1, [0, 0])[1],
+                              self.ports_bitrate.get(3, {}).get(2, [0, 0])[0],
+                              self.ports_bitrate.get(2, {}).get(3, [0, 0])[1])
+        link231_bitrate = max(self.ports_bitrate.get(2, {}).get(3, [0, 0])[0],
+                              self.ports_bitrate.get(3, {}).get(2, [0, 0])[1],
+                              self.ports_bitrate.get(3, {}).get(1, [0, 0])[0],
+                              self.ports_bitrate.get(1, {}).get(3, [0, 0])[1])
+        link142_bitrate = max(self.ports_bitrate.get(1, {}).get(4, [0, 0])[0],
+                              self.ports_bitrate.get(4, {}).get(1, [0, 0])[1],
+                              self.ports_bitrate.get(4, {}).get(2, [0, 0])[0],
+                              self.ports_bitrate.get(2, {}).get(4, [0, 0])[1])
+        link241_bitrate = max(self.ports_bitrate.get(2, {}).get(4, [0, 0])[0],
+                              self.ports_bitrate.get(4, {}).get(2, [0, 0])[1],
+                              self.ports_bitrate.get(4, {}).get(1, [0, 0])[0],
+                              self.ports_bitrate.get(1, {}).get(4, [0, 0])[1])
+        self.logger.info('1---2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link12_bitrate, link21_bitrate))
+        self.logger.info('1-3-2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link132_bitrate, link231_bitrate))
+        self.logger.info('1-4-2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link142_bitrate, link241_bitrate))
+        self.logger.info('')
     
 
     # Send flow stats request to {datapath}
