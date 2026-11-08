@@ -339,7 +339,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         
         for flow in self.flow_stats.get(target_dpid, []):
             datapath = self.datapaths[target_dpid]
-            if flow.priority != 65534 or not flow.instructions:
+            if flow.priority != 65534 or flow.instructions:
                 continue
 
             in_port = flow.match.get('in_port')
