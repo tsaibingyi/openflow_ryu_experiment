@@ -1,5 +1,4 @@
 import csv
-import io
 from ryu.app import simple_switch_stp_13
 from ryu.controller import ofp_event
 from ryu.controller.handler import (
@@ -8,7 +7,7 @@ from ryu.controller.handler import (
     set_ev_cls,
 )
 from ryu.lib import hub
-from ryu.lib.packet import packet, ethernet, ipv4, udp, ether_types
+from ryu.lib.packet import packet, ethernet, ipv4, arp, udp, ether_types
 from ryu.ofproto import ofproto_v1_3
 
 
@@ -260,17 +259,19 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         match_ip = pkt.get_protocol(ipv4.ipv4)
         
         # IP flow control for specific switches
-        if dpid == 1 and match_ip and in_port == 1:
-            self._s1_ip_flow_ctrl(datapath, parser, ofproto, msg, in_port)
+        if dpid == 1 and in_port == 1:
+            self._s1_ip_flow_ctrl(datapath, msg)
             return
         # Call the default packet-in handler for other packets
         super(SimpleSwitch, self)._packet_in_handler(ev)
 
 
     # Implement IP flow control logic for switch 1 based on port utilization and bitrate limits
-    def _s1_ip_flow_ctrl(self, datapath, parser, ofproto, msg, in_port):
+    def _s1_ip_flow_ctrl(self, datapath, msg):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        in_port = msg.match['in_port']
         pkt = packet.Packet(msg.data)
-        udp_pkt = pkt.get_protocol(udp.udp)
 
         # Get the current TX and RX bitrate for relevant ports
         s1p2_tx = self.ports_bitrate.get(1, {}).get(2, [0, 0])[0]
@@ -290,23 +291,45 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         else:
             out_port = 2
 
-        # Determine the flow match based on whether it's a UDP packet or not
-        priority = 1000
-        if udp_pkt:
-            match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
-                                    ip_proto=17,
-                                    ipv4_src='10.0.0.1',
-                                    ipv4_dst='10.0.0.2',
-                                    udp_dst=udp_pkt.dst_port)
-            if udp_pkt.dst_port > 10000 and udp_pkt.dst_port < 10100:
-                priority = 2000
+        # Extract ARP and UDP packets from the received packet
+        arp_pkt = pkt.get_protocol(arp.arp)
+        ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
+
+        # Determine the flow rules based on the packet type (ARP, UDP, or other IP)
+        if arp_pkt:
+            match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,
+                                    arp_spa='10.0.0.1')
+            priority = 1500
+            out_port = 2
+        elif ipv4_pkt:
+            udp_pkt = pkt.get_protocol(udp.udp)
+            if udp_pkt:
+                match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                        ip_proto=17,
+                                        ipv4_src='10.0.0.1',
+                                        ipv4_dst='10.0.0.2',
+                                        udp_dst=udp_pkt.dst_port)
+                if 10000 < udp_pkt.dst_port < 10100:
+                    priority = 2000
+                else:
+                    priority = 1200
+            else:
+                match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                        ip_proto=pkt.get_protocol(ipv4.ipv4).proto,
+                                        ipv4_src='10.0.0.1',
+                                        ipv4_dst='10.0.0.2')
+                priority = 1000
         else:
-            match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+            match = parser.OFPMatch(eth_type=pkt.get_protocol(ethernet.ethernet).ethertype,
                                     ipv4_src='10.0.0.1',
                                     ipv4_dst='10.0.0.2')
+            priority = 1000
+            out_port = 2
+        
         
         actions = [parser.OFPActionOutput(out_port)]
 
+        # Replace STP drop rules based on the selected output port
         if out_port == 2:
             self.replace_stp_drop_rule(target_dpid=2, target_in_port=1)
         elif out_port == 3:
