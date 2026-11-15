@@ -243,14 +243,20 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         
         # IP flow control for specific switches
         if dpid == 1:
-            self._s1_ip_flow_ctrl(datapath, msg)
+            self._s1_flow_ctrl(datapath, msg)
+            return
+        elif dpid == 2:
+            self._s2_flow_ctrl(datapath, msg)
+            return
+        elif dpid == 3 or dpid == 4:
+            self._s34_flow_ctrl(datapath, msg)
             return
         # Call the default packet-in handler for other packets
         super(SimpleSwitch, self)._packet_in_handler(ev)
 
 
     # Implement IP flow control logic for switch 1 based on port utilization and bitrate limits
-    def _s1_ip_flow_ctrl(self, datapath, msg):
+    def _s1_flow_ctrl(self, datapath, msg):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         in_port = msg.match['in_port']
@@ -324,7 +330,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                 priority = 1000
         # Other IP packet handling
         else:
-            match = parser.OFPMatch(eth_type=pkt.get_protocol(ethernet.ethernet).ethertype)
+            match = parser.OFPMatch(eth_type=eth.ethertype)
             priority = 1000
             out_port = 2
         
@@ -358,6 +364,107 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         datapath.send_msg(out)
         return
 
+    def _s2_flow_ctrl(self, datapath, msg):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        in_port = msg.match['in_port']
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+
+        if in_port != 2 and eth.dst == '00:00:00:00:00:02':
+            out_port = 2
+            actions = [parser.OFPActionOutput(out_port)]
+            mod = parser.OFPFlowMod(datapath=datapath, 
+                                    priority=1,
+                                    match=parser.OFPMatch(eth_dst='00:00:00:00:00:02'),
+                                    instructions=[parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)])
+            datapath.send_msg(mod)
+
+            data = None
+            if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+                data = msg.data
+            out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
+                                        in_port=in_port, actions=actions, data=data)
+            datapath.send_msg(out)
+            return
+
+        out_port = 1
+
+        # Extract ARP and UDP packets from the received packet
+        arp_pkt = pkt.get_protocol(arp.arp)
+
+        # Determine the flow rules based on the packet type (ARP, UDP, or other IP)
+        # ARP packet handling
+        if arp_pkt:
+            if in_port != 2:
+                out_port = 2
+            match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,
+                                    arp_spa=arp_pkt.src_ip)
+            priority = 1500
+        # Other packet handling
+        else:
+            match = parser.OFPMatch(eth_type=eth.ethertype,
+                                    eth_dst=eth.dst)
+            priority = 1000
+        
+        
+        actions = [parser.OFPActionOutput(out_port)]
+
+        # Install a flow entry in the switch
+        mod = parser.OFPFlowMod(datapath=datapath, 
+                                priority=priority,
+                                match=match,
+                                instructions=[parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)],
+                                idle_timeout=10, hard_timeout=30)
+        datapath.send_msg(mod)
+
+        # Send the packet out immediately after installing the flow entry
+        data = None
+        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+            data = msg.data
+        out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
+                                    in_port=in_port, actions=actions, data=data)
+        datapath.send_msg(out)
+        return
+
+    def _s34_flow_ctrl(self, datapath, msg):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        in_port = msg.match['in_port']
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+        out_port = None
+
+        if eth.dst == '00:00:00:00:00:02':
+            out_port = 2
+        elif eth.dst == '00:00:00:00:00:01':
+            out_port = 1
+
+        if out_port is None:
+            return
+
+        actions = [parser.OFPActionOutput(out_port)]
+
+        # Install a flow entry in the switch
+        match = parser.OFPMatch(in_port=in_port,
+                                eth_dst=eth.dst)
+
+        mod = parser.OFPFlowMod(datapath=datapath, 
+                                priority=1000,
+                                match=match,
+                                instructions=[parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)],
+                                idle_timeout=10, hard_timeout=30)
+        datapath.send_msg(mod)
+
+        # Send the packet out immediately after installing the flow entry
+        data = None
+        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+            data = msg.data
+        out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
+                                  in_port=in_port, actions=actions, data=data)
+        datapath.send_msg(out)
+        return
+
     def replace_stp_drop_rule(self, target_dpid, target_in_port):
         if target_dpid not in self.flow_stats:
             return
@@ -380,3 +487,4 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                                         match=flow.match,
                                         instructions=[])
                 datapath.send_msg(mod)
+                self.logger.info("Replaced STP drop rule on datapath %s, in_port %s", target_dpid, target_in_port)
