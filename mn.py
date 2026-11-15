@@ -65,7 +65,7 @@ def do_start_server(self, line):
     
     cmd = "xterm -hold -e 'bash /media/sf_VboxShare/udp_ctrl/Mininet_CLI_Func/server.sh' &"
     h2.cmd(cmd)
-    print("The Server is started on h2.")
+    print("Iperf Servers have been started on h2.")
 CLI.do_start_server = do_start_server
 
 def do_start_test(self, line):
@@ -75,7 +75,7 @@ def do_start_test(self, line):
     cmd = "xterm -hold -e 'bash /media/sf_VboxShare/udp_ctrl/Mininet_CLI_Func/client.sh' &"
     h1 = net.get('h1')
     h1.cmd(cmd)
-    print("The Client Test is started on h1.")
+    print("Iperf Clients have been started on h1.")
 CLI.do_start_test = do_start_test
 
 if __name__ == '__main__':
