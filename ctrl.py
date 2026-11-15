@@ -55,7 +55,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
 
 
     # Delete a flow entry from the switch with optional match fields, priority, output port, and output group
-    def del_flow(self, datapath, match_fields=None, priority=None, out_port=None, out_group=None):
+    def del_flow(self, datapath, priority=None, match_fields=None, out_port=None, out_group=None):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         if match_fields is None:
@@ -240,7 +240,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         # Ignore LLDP and reserved multicast packets
         if eth.ethertype == ether_types.ETH_TYPE_LLDP or eth.dst.startswith('01:80:c2:'):
             return
-        match_ip = pkt.get_protocol(ipv4.ipv4)
         
         # IP flow control for specific switches
         if dpid == 1:
@@ -301,17 +300,17 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         # ARP packet handling
         if arp_pkt:
             match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,
-                                    arp_spa='10.0.0.1')
+                                    arp_spa=arp_pkt.src_ip)
             priority = 1500
             out_port = 2
         # IPv4 packet handling
         elif ipv4_pkt:
-            udp_pkt = pkt.get_protocol(udp.udp)
-            if udp_pkt:
+            if ipv4_pkt.proto == 17:  # UDP protocol
+                udp_pkt = pkt.get_protocol(udp.udp)
                 match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
                                         ip_proto=17,
-                                        ipv4_src='10.0.0.1',
-                                        ipv4_dst='10.0.0.2',
+                                        ipv4_src=ipv4_pkt.src,
+                                        ipv4_dst=ipv4_pkt.dst,
                                         udp_dst=udp_pkt.dst_port)
                 if 10000 < udp_pkt.dst_port < 10100:
                     priority = 2000
@@ -320,14 +319,12 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             else:
                 match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
                                         ip_proto=pkt.get_protocol(ipv4.ipv4).proto,
-                                        ipv4_src='10.0.0.1',
-                                        ipv4_dst='10.0.0.2')
+                                        ipv4_src=ipv4_pkt.src,
+                                        ipv4_dst=ipv4_pkt.dst)
                 priority = 1000
         # Other IP packet handling
         else:
-            match = parser.OFPMatch(eth_type=pkt.get_protocol(ethernet.ethernet).ethertype,
-                                    ipv4_src='10.0.0.1',
-                                    ipv4_dst='10.0.0.2')
+            match = parser.OFPMatch(eth_type=pkt.get_protocol(ethernet.ethernet).ethertype)
             priority = 1000
             out_port = 2
         
@@ -373,8 +370,8 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
             in_port = flow.match.get('in_port')
             if in_port == target_in_port:
                 self.del_flow(datapath=datapath,
-                              match_fields=flow.match,
-                              priority=flow.priority)
+                              priority=flow.priority,
+                              match_fields=flow.match)
 
                 ofproto = datapath.ofproto
                 parser = datapath.ofproto_parser
