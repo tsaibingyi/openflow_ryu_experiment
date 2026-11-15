@@ -21,10 +21,8 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         self.datapaths = {}
         # Port bitrate limits for each switch and port (switch_id : {port_no: bitrate_limit(Kbps)})
         self.port_bitrate_limit = {
-            1: {2: 64000, 3: 16000, 4: 16000},
-            2: {1: 64000, 3: 16000, 4: 16000},
-            3: {1: 16000, 2: 16000},
-            4: {1: 16000, 2: 16000}
+            1: {2: 64000},
+            2: {1: 64000},
         }
         # Store port statistics for each switch and port (datapath_id : {port_no: [tx_bytes, rx_bytes]})
         self.ports_stats = {}
@@ -35,57 +33,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         self.bitrate_threshold = 0.9  # the port bitrate limit
         # Store flow statistics for each switch (datapath_id : [flow_stats])
         self.flow_stats = {}
-        # Initialize CSV log file and write header if not exists
-        self.time_counter = 0
-        self._init_csv_log()
-        
-
-    def _init_csv_log(self):
-        try:
-            # Check if file already exists to decide whether to write header
-            with open('rate_log.csv', 'r') as f:
-                reader = csv.reader(f)
-                header = next(reader, None)
-                if header is None:
-                    raise StopIteration
-        except (IOError, StopIteration):
-            with open('rate_log.csv', 'w') as f:
-                writer = csv.writer(f)
-                writer.writerow(['time', '1---2:tx', '1-3-2:tx', '1-4-2:tx', '1---2:rx', '1-3-2:rx', '1-4-2:rx'])
-
-
-    # Delete a flow entry from the switch with optional match fields, priority, output port, and output group
-    def del_flow(self, datapath, match_fields=None, priority=None, out_port=None, out_group=None):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        if match_fields is None:
-            match = parser.OFPMatch()
-        elif isinstance(match_fields, dict):
-            match = parser.OFPMatch(**match_fields)
-        else:
-            match = match_fields
-        
-        if out_port is None:
-            target_out_port = ofproto.OFPP_ANY
-        else:
-            target_out_port = out_port
-        
-        if out_group is None:
-            target_out_group = ofproto.OFPG_ANY
-        else:
-            target_out_group = out_group
-        
-        target_priority = priority if priority is not None else 1
-
-        mod = parser.OFPFlowMod(
-            datapath=datapath,
-            command=ofproto.OFPFC_DELETE_STRICT,
-            out_port=target_out_port,
-            out_group=target_out_group,
-            priority=target_priority,
-            match=match
-        )
-        datapath.send_msg(mod)
 
 
     # Handler for state change between MAIN_DISPATCHER and DEAD_DISPATCHER
@@ -169,45 +116,8 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                              self.ports_bitrate.get(2, {}).get(1, [0, 0])[1])
         link21_bitrate = max(self.ports_bitrate.get(2, {}).get(1, [0, 0])[0],
                              self.ports_bitrate.get(1, {}).get(2, [0, 0])[1])
-        link132_bitrate = max(self.ports_bitrate.get(1, {}).get(3, [0, 0])[0],
-                              self.ports_bitrate.get(3, {}).get(1, [0, 0])[1],
-                              self.ports_bitrate.get(3, {}).get(2, [0, 0])[0],
-                              self.ports_bitrate.get(2, {}).get(3, [0, 0])[1])
-        link231_bitrate = max(self.ports_bitrate.get(2, {}).get(3, [0, 0])[0],
-                              self.ports_bitrate.get(3, {}).get(2, [0, 0])[1],
-                              self.ports_bitrate.get(3, {}).get(1, [0, 0])[0],
-                              self.ports_bitrate.get(1, {}).get(3, [0, 0])[1])
-        link142_bitrate = max(self.ports_bitrate.get(1, {}).get(4, [0, 0])[0],
-                              self.ports_bitrate.get(4, {}).get(1, [0, 0])[1],
-                              self.ports_bitrate.get(4, {}).get(2, [0, 0])[0],
-                              self.ports_bitrate.get(2, {}).get(4, [0, 0])[1])
-        link241_bitrate = max(self.ports_bitrate.get(2, {}).get(4, [0, 0])[0],
-                              self.ports_bitrate.get(4, {}).get(2, [0, 0])[1],
-                              self.ports_bitrate.get(4, {}).get(1, [0, 0])[0],
-                              self.ports_bitrate.get(1, {}).get(4, [0, 0])[1])
         # Log the link bitrate to terminal
         self.logger.info('1---2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link12_bitrate, link21_bitrate))
-        self.logger.info('1-3-2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link132_bitrate, link231_bitrate))
-        self.logger.info('1-4-2: tx {:>7,} Kbps, rx {:>7,} Kbps'.format(link142_bitrate, link241_bitrate))
-        self.logger.info('')
-        # Log the link bitrate to CSV file
-        self.time_counter += 1
-        row_data = [
-            self.time_counter,
-            link12_bitrate,
-            link132_bitrate,
-            link142_bitrate,
-            link21_bitrate,
-            link231_bitrate,
-            link241_bitrate
-        ]
-
-        try:
-            with open('rate_log.csv', 'a') as f:
-                writer = csv.writer(f)
-                writer.writerow(row_data)
-        except IOError as e:
-            self.logger.error('Failed to write to rate_log.csv: %s', str(e))
     
 
     # Send flow stats request to {datapath}
@@ -274,24 +184,8 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                                         in_port=in_port, actions=actions, data=data)
             datapath.send_msg(out)
             return
-
-        # Get the current TX and RX bitrate for relevant ports
-        s1p2_tx = self.ports_bitrate.get(1, {}).get(2, [0, 0])[0]
-        s1p3_tx = self.ports_bitrate.get(1, {}).get(3, [0, 0])[0]
-        s2p1_rx = self.ports_bitrate.get(2, {}).get(1, [0, 0])[1]
-        s2p3_rx = self.ports_bitrate.get(2, {}).get(3, [0, 0])[1]
-        # Get the bitrate limits for relevant ports
-        port2_limit = self.port_bitrate_limit[1][2] * self.bitrate_threshold
-        port3_limit = self.port_bitrate_limit[1][3] * self.bitrate_threshold
-
-        # Determine the output port based on the current port utilization and limits
-        if max(s1p2_tx, s2p1_rx) >= port2_limit:
-            if max(s1p3_tx, s2p3_rx) >= port3_limit:
-                out_port = 4
-            else:
-                out_port = 3
-        else:
-            out_port = 2
+        
+        out_port = 2
 
         # Extract ARP and UDP packets from the received packet
         arp_pkt = pkt.get_protocol(arp.arp)
@@ -334,16 +228,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         
         actions = [parser.OFPActionOutput(out_port)]
 
-        # Replace STP drop rules based on the selected output port
-        if out_port == 2:
-            self.replace_stp_drop_rule(target_dpid=2, target_in_port=1)
-        elif out_port == 3:
-            self.replace_stp_drop_rule(target_dpid=3, target_in_port=1)
-            self.replace_stp_drop_rule(target_dpid=2, target_in_port=3)
-        elif out_port == 4:
-            self.replace_stp_drop_rule(target_dpid=4, target_in_port=1)
-            self.replace_stp_drop_rule(target_dpid=2, target_in_port=4)
-
         # Install a flow entry in the switch
         mod = parser.OFPFlowMod(datapath=datapath, 
                                 priority=priority,
@@ -360,26 +244,3 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                                     in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
         return
-
-    def replace_stp_drop_rule(self, target_dpid, target_in_port):
-        if target_dpid not in self.flow_stats:
-            return
-        
-        for flow in self.flow_stats.get(target_dpid, []):
-            datapath = self.datapaths[target_dpid]
-            if flow.priority != 65534 or flow.instructions:
-                continue
-
-            in_port = flow.match.get('in_port')
-            if in_port == target_in_port:
-                self.del_flow(datapath=datapath,
-                              match_fields=flow.match,
-                              priority=flow.priority)
-
-                ofproto = datapath.ofproto
-                parser = datapath.ofproto_parser
-                mod = parser.OFPFlowMod(datapath=datapath,
-                                        priority=100,
-                                        match=flow.match,
-                                        instructions=[])
-                datapath.send_msg(mod)

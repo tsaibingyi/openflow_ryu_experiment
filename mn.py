@@ -21,9 +21,7 @@ def myNetwork():
     c1 = net.addController(name='c1', controller=RemoteController, ip='127.0.0.1', port=6653)
 
     info( '*** Add switches\n')
-    s3 = net.addSwitch('s3', cls=OVSKernelSwitch)
     s2 = net.addSwitch('s2', cls=OVSKernelSwitch)
-    s4 = net.addSwitch('s4', cls=OVSKernelSwitch)
     s1 = net.addSwitch('s1', cls=OVSKernelSwitch)
 
     info( '*** Add hosts\n')
@@ -35,14 +33,6 @@ def myNetwork():
     s1s2 = {'bw':64}
     net.addLink(s1, s2, cls=TCLink , **s1s2)
     net.addLink(s2, h2)
-    s1s3 = {'bw':16}
-    net.addLink(s1, s3, cls=TCLink , **s1s3)
-    s2s3 = {'bw':16}
-    net.addLink(s2, s3, cls=TCLink , **s2s3)
-    s1s4 = {'bw':16}
-    net.addLink(s1, s4, cls=TCLink , **s1s4)
-    s2s4 = {'bw':16}
-    net.addLink(s2, s4, cls=TCLink , **s2s4)
 
     info( '*** Starting network\n')
     net.build()
