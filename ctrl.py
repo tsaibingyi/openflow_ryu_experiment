@@ -101,8 +101,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                 self.ports_stats[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
                 self.ports_stats_old[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
                 self.ports_bitrate[datapath.id] = {port: [0, 0] for port in port_no if port != ofproto_v1_3.OFPP_LOCAL}
-                if datapath.id == 1:
-                    self._install_default_udp_handler(datapath)
 
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.datapaths:
@@ -111,20 +109,6 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                 del self.ports_stats[datapath.id]
                 del self.ports_stats_old[datapath.id]
                 del self.ports_bitrate[datapath.id]
-
-    def _install_default_udp_handler(self, datapath):
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        match = parser.OFPMatch(eth_type=0x0800, ip_proto=17)  # Match IPv4 UDP packets
-        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
-        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
-        mod = parser.OFPFlowMod(
-            datapath=datapath,
-            priority=500,
-            match=match,
-            instructions=inst
-        )
-        datapath.send_msg(mod)
 
 
     # Periodically request stats from all datapaths (every 1 second)
@@ -259,7 +243,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         match_ip = pkt.get_protocol(ipv4.ipv4)
         
         # IP flow control for specific switches
-        if dpid == 1 and in_port == 1:
+        if dpid == 1:
             self._s1_ip_flow_ctrl(datapath, msg)
             return
         # Call the default packet-in handler for other packets
@@ -272,6 +256,24 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         parser = datapath.ofproto_parser
         in_port = msg.match['in_port']
         pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+
+        if in_port != 1 and eth.dst == '00:00:00:00:00:01':
+            out_port = 1
+            actions = [parser.OFPActionOutput(out_port)]
+            mod = parser.OFPFlowMod(datapath=datapath, 
+                                    priority=1,
+                                    match=parser.OFPMatch(eth_dst='00:00:00:00:00:01'),
+                                    instructions=[parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)])
+            datapath.send_msg(mod)
+
+            data = None
+            if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+                data = msg.data
+            out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
+                                        in_port=in_port, actions=actions, data=data)
+            datapath.send_msg(out)
+            return
 
         # Get the current TX and RX bitrate for relevant ports
         s1p2_tx = self.ports_bitrate.get(1, {}).get(2, [0, 0])[0]
@@ -296,11 +298,13 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
         ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
 
         # Determine the flow rules based on the packet type (ARP, UDP, or other IP)
+        # ARP packet handling
         if arp_pkt:
             match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP,
                                     arp_spa='10.0.0.1')
             priority = 1500
             out_port = 2
+        # IPv4 packet handling
         elif ipv4_pkt:
             udp_pkt = pkt.get_protocol(udp.udp)
             if udp_pkt:
@@ -319,6 +323,7 @@ class SimpleSwitch(simple_switch_stp_13.SimpleSwitch13):
                                         ipv4_src='10.0.0.1',
                                         ipv4_dst='10.0.0.2')
                 priority = 1000
+        # Other IP packet handling
         else:
             match = parser.OFPMatch(eth_type=pkt.get_protocol(ethernet.ethernet).ethertype,
                                     ipv4_src='10.0.0.1',
